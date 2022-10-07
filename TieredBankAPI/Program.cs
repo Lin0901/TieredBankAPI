@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Reflection.Metadata.Ecma335;
 using TieredBankAPI.Data;
 using TieredBankAPI.Models;
+using TieredBankAPI.DAL;
+using TieredBankAPI.BLL;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<TieredBankAPIContext>(options =>
@@ -19,36 +21,78 @@ var app = builder.Build();
 
 app.MapGet("/accounts", async (TieredBankAPIContext db) =>
 {
-    return await db.Account.ToListAsync();
+    AccountRepository repo = new AccountRepository(db);
+    return repo.GetAccounts();
+
+    //return await db.Account.ToListAsync();
 });
 
+app.MapGet("/accounts/{id}", (string id, TieredBankAPIContext db) =>
+{
+    AccountRepository repo = new AccountRepository(db);
+
+    try
+    {
+        return repo.GetAccountById(int.Parse(id));
+    }
+    catch(Exception e)
+    {
+        return null;
+    }
+
+});
+
+app.MapGet("/accounts/{id}/balance", (string id, TieredBankAPIContext db) =>
+{
+    AccountBusinessLogic accountBll = new AccountBusinessLogic(new AccountRepository(db));
+    try
+    {
+        decimal balance = accountBll.GetBalance(int.Parse(id));
+        return Results.Ok(balance);
+    }
+    catch(Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+
+});
 
 app.MapGet("/customers", async (TieredBankAPIContext db) =>
 {
-    return await db.Customer.ToListAsync();
-});
+    CustomerRepository repo = new CustomerRepository(db);
+    return repo.GetCustomers();
 
+    //return await db.Customer.ToListAsync();
+});
 
 app.MapGet("/customers/{id}/total", async (TieredBankAPIContext db, string id) =>
 {
-    Customer customer = await db.Customer.FindAsync(id);
+    CustomerRepository customerRepository = new CustomerRepository(db);
+    AccountRepository accountRepository = new AccountRepository(db);
 
-    if(customer != null)
+    try
     {
-        List<Account> accounts = await db.Account.Where(a => a.CustomerId ==
-        customer.Id).ToListAsync();
+        Customer customer = customerRepository.GetCustomerById(int.Parse(id));
+        //Customer customer = await db.Customer.FindAsync(id);
+
+        List<Account> accounts = accountRepository.GetAccountByCustomerId(customer.Id);
+
+        //await db.Account.Where(a => a.CustomerId == customer.Id).ToListAsync();
 
         decimal sum = accounts.Sum(a => a.Balance);
 
-        var response = JsonSerializer.Serialize(new
-        {
-            Sum = sum
-        });
+            var response = JsonSerializer.Serialize(new
+            {
+                Sum = sum
+            });
 
-        return Results.Ok(response);
+            return Results.Ok(response);
+       
     }
-
-    return Results.NotFound();
+    catch
+    {
+        return Results.NotFound();
+    }
 
 
 });
